@@ -1,16 +1,18 @@
+// include the blake2s.h file
 #include "blake2.h"
 #include <string.h>
 
-#ifndef ROTR32
+// define the rotation by 32 bits
 #define ROTR32(x, y) (((x) >> (y)) ^ ((x) << (32 - (y))))
-#endif
 
+// the function to get the little endian form of b[] in m[]
 #define B2S_GET32(p)                           \
     (((uint32_t)((uint8_t *)(p))[0]) ^         \
      (((uint32_t)((uint8_t *)(p))[1]) << 8) ^  \
      (((uint32_t)((uint8_t *)(p))[2]) << 16) ^ \
      (((uint32_t)((uint8_t *)(p))[3]) << 24))
 
+// define the core function G
 #define B2S_G(a, b, c, d, x, y)         \
     {                                   \
         v[a] = v[a] + v[b] + x;         \
@@ -23,13 +25,18 @@
         v[b] = ROTR32(v[b] ^ v[c], 7);  \
     }
 
+// the constants in blake2s
+// IV[i] = floor(2**w * frac(sqrt(prime(i+1)))), where prime(i) is the i:th prime number ( 2, 3, 5, 7, 11, 13, 17, 19 )
+// and sqrt(x) is the square root of x.
 static const uint32_t blake2s_iv[8] =
     {
         0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
         0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19};
 
+// compression function to generate hash digest
 static void blake2s_compress(blake2s_ctx *ctx, int last)
 {
+    // permutation table (10x16)
     const uint8_t sigma[10][16] = {
         {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
         {14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3},
@@ -41,25 +48,42 @@ static void blake2s_compress(blake2s_ctx *ctx, int last)
         {13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10},
         {6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5},
         {10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0}};
-    int i;
+
+    // defining states and message blocks (16 states and 16 blocks of message for G function)
     uint32_t v[16], m[16];
 
+    // initializing states with h values repeatedly
+    int i;
     for (i = 0; i < 8; i++)
-    { // init work variables
+    {
         v[i] = ctx->h[i];
         v[i + 8] = blake2s_iv[i];
     }
 
-    v[12] ^= ctx->t[0]; // low 32 bits of offset
-    v[13] ^= ctx->t[1]; // high 32 bits
-    if (last)           // last block flag set ?
+    // 13th and 14th state (index - 12th and 13th) should be XORed with the counter variables
+    // low 32 bits of offset
+    v[12] ^= ctx->t[0];
+
+    // high 32 bits
+    v[13] ^= ctx->t[1];
+
+    // if last block flag is set as 1
+    if (last)
+    {
         v[14] = ~v[14];
+    }
 
-    for (i = 0; i < 16; i++) // get little-endian words
+    // initialize m[] with b[] but in little endian form
+    // m[] is 16 blocks of 32 bits and b[] is 64 blocks of 8 bits (both is of size 512 bits)
+    for (i = 0; i < 16; i++)
+    {
+        // initialize
         m[i] = B2S_GET32(&ctx->b[4 * i]);
+    }
 
+    // ten rounds of the G core function
     for (i = 0; i < 10; i++)
-    { // ten rounds
+    {
         B2S_G(0, 4, 8, 12, m[sigma[i][0]], m[sigma[i][1]]);
         B2S_G(1, 5, 9, 13, m[sigma[i][2]], m[sigma[i][3]]);
         B2S_G(2, 6, 10, 14, m[sigma[i][4]], m[sigma[i][5]]);
@@ -70,8 +94,11 @@ static void blake2s_compress(blake2s_ctx *ctx, int last)
         B2S_G(3, 4, 9, 14, m[sigma[i][14]], m[sigma[i][15]]);
     }
 
+    // generate the hash digest and assign it to the h[] (chained states)
     for (i = 0; i < 8; ++i)
+    {
         ctx->h[i] ^= v[i] ^ v[i + 8];
+    }
 }
 
 // Initialization function to initialize the context "ctx" with optional key "key".
@@ -83,6 +110,7 @@ int blake2s_init(blake2s_ctx *ctx, size_t outlen, const void *key, size_t keylen
     // if any of the conditions is violated return -1
     if (outlen == 0 || outlen > 32 || keylen > 32)
     {
+        // return -1 to show pass of illegal parameters
         return -1;
     }
 
@@ -108,31 +136,54 @@ int blake2s_init(blake2s_ctx *ctx, size_t outlen, const void *key, size_t keylen
     ctx->c = 0;    // pointer within buffer
     ctx->outlen = outlen;
 
-    for (i = keylen; i < 64; i++) // zero input block
-        ctx->b[i] = 0;
-    if (keylen > 0)
+    // offset the size for key and then insert 0s
+    for (i = keylen; i < 64; i++)
     {
-        blake2s_update(ctx, key, keylen);
-        ctx->c = 64; // at the end
+        ctx->b[i] = 0;
     }
 
+    // if key exists i.e. keylen > 0 then,
+    if (keylen > 0)
+    {
+        // call update function to insert the key/message
+        blake2s_update(ctx, key, keylen);
+
+        // mark buffer as full before sending the buffer for compression of the key
+        ctx->c = 64;
+    }
+
+    // finally return 0 on successful completion
     return 0;
 }
 
-void blake2s_update(blake2s_ctx *ctx, const void *in, size_t inlen) // data bytes
+// update function to insert key or message and then send to compress function
+void blake2s_update(blake2s_ctx *ctx, const void *in, size_t inlen)
 {
     size_t i;
-
+    // until the given length insert key or message
     for (i = 0; i < inlen; i++)
     {
+        // if buffer is already full
         if (ctx->c == 64)
-        {                             // buffer full ?
-            ctx->t[0] += ctx->c;      // add counters
-            if (ctx->t[0] < ctx->c)   // carry overflow ?
-                ctx->t[1]++;          // high word
-            blake2s_compress(ctx, 0); // compress (not last)
-            ctx->c = 0;               // counter to zero
+        {
+            // add counters
+            ctx->t[0] += ctx->c;
+
+            // carry overflow
+            if (ctx->t[0] < ctx->c)
+            {
+                // high word
+                ctx->t[1]++;
+            }
+
+            // compress (not last)
+            blake2s_compress(ctx, 0);
+
+            // set counter to 0
+            ctx->c = 0;
         }
+
+        // insert the message or key at the beginning of the buffer b[64 bytes]
         ctx->b[ctx->c++] = ((const uint8_t *)in)[i];
     }
 }
@@ -141,21 +192,31 @@ void blake2s_update(blake2s_ctx *ctx, const void *in, size_t inlen) // data byte
 // Result placed in "out".
 void blake2s_final(blake2s_ctx *ctx, void *out)
 {
-    size_t i;
+    // mark last block offset
+    ctx->t[0] += ctx->c;
 
-    ctx->t[0] += ctx->c;    // mark last block offset
-    if (ctx->t[0] < ctx->c) // carry overflow
-        ctx->t[1]++;        // high word
+    // handle carry overflow
+    if (ctx->t[0] < ctx->c)
+        // high word
+        ctx->t[1]++;
 
-    while (ctx->c < 64) // fill up with zeros
+    // fill up with zeros till 512 bits or 64 bytes
+    while (ctx->c < 64)
         ctx->b[ctx->c++] = 0;
-    blake2s_compress(ctx, 1); // final block flag = 1
 
-    // little endian convert and store
+    // final block, set falg = 1
+    blake2s_compress(ctx, 1);
+
+    // little endian convert and store the hash digest in out
+    size_t i;
     for (i = 0; i < ctx->outlen; i++)
     {
-        ((uint8_t *)out)[i] =
-            (ctx->h[i >> 2] >> (8 * (i & 3))) & 0xFF;
+        // i>>2 fetches the same byte 4 times e.g. i>>2 is 0 for i = 0 to 4 and similarly it is 7 for i = 27 to 31
+        // 8*(i&3) is always 0 to 3 for any number like for i = 0 to 3 it is 0 to 3
+        // and for i = 4 to 7 it is 0 to 3 similarly for all other bytes thus shifting by 0,1,2,and 3 for every 4 bytes to get the last byte
+        // & 0xff gives the last byte only from the 4 bytes thus giving the little endian form
+        // e.g. if h[0] = 8c5e8c50 then out[0] = 00000050, out[1] = 0000008c, out[2] = 0000005e, out[3] = 0000008c
+        ((uint8_t *)out)[i] = (ctx->h[i >> 2] >> (8 * (i & 3))) & 0xFF;
     }
 }
 
