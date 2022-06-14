@@ -2,7 +2,10 @@
 #include "blake2.h"
 #include <string.h>
 
-// define the rotation by 32 bits
+#define toRead 64
+
+// define the circular right rotation by 32 bits
+// ((x) << (32 - (y))) is used to bring the discarded values due to shift back at the end maintaining rotation or circular shift
 #define ROTR32(x, y) (((x) >> (y)) ^ ((x) << (32 - (y))))
 
 // the function to get the little endian form of b[] in m[]
@@ -67,7 +70,7 @@ static void blake2s_compress(blake2s_ctx *ctx, int last)
     // high 32 bits
     v[13] ^= ctx->t[1];
 
-    // if last block flag is set as 1
+    // if last block, finalization flag (f0) is set as 1
     if (last)
     {
         v[14] = ~v[14];
@@ -79,6 +82,7 @@ static void blake2s_compress(blake2s_ctx *ctx, int last)
     {
         // initialize
         m[i] = B2S_GET32(&ctx->b[4 * i]);
+        // printf("%x\n", m[i]);
     }
 
     // ten rounds of the G core function
@@ -239,35 +243,95 @@ int blake2s(void *out, size_t outlen, const void *key, size_t keylen, const void
     return 0;
 }
 
-// main function
-// todo - take file input
+// main function: takes file input if argument is provided in command line
 int main(int argc, char **argv)
 {
-    // take the message(in) and the key(key)
-    char *in = "abc";
-    char *key = "";
-
     // output array - this will contain the final hash-digest
     // (32 bytes = 32*8 bits = 256 bits = 256/4 hex characters = 64 characters -> as 1 hex digit requires a nibble(i.e. 1/2 byte))
     uint8_t out[32];
 
-    // calculate the length of message and the key
-    size_t msg_len = strlen(in);
+    // take the message(in) and the key(key)
+    char *key = "";
+
+    // calculate the length of the key
     size_t key_len = strlen(key);
 
-    // invoke the BLAKE2s-256 hashing function
-    // void pointers cannot be dereferenced i.e. *out cannot print the value in out[0]
-    // definition  = blake2s(void *out, size_t outlen, const void *key, size_t keylen, const void *in, size_t inlen)
-    blake2s(out, 32, key, key_len, in, msg_len);
-
-    // print the hash-digest in hexadecimal form
-    printf("BLAKE2s-256 HASH for \"%s\": ", in);
-    // since 256-bits in bytes is 32 bytes- but in little endian form
-    for (int i = 0; i < 32; ++i)
+    // for default
+    // if command line has no arguments then print default hash for "abc"
+    if (argc < 2)
     {
-        // to get two characters even if the first character is "0" like "06"
-        // normally if "0" is skipped in "06"
-        printf("%02x", out[i]);
+        // take the message(in) and the key(key)
+        char *message = "abc";
+
+        // calculate the length of message and the key
+        size_t msg_len = strlen(message);
+
+        // invoke the BLAKE2s-256 hashing function
+        // void pointers cannot be dereferenced i.e. *out cannot print the value in out[0]
+        // definition  = blake2s(void *out, size_t outlen, const void *key, size_t keylen, const void *in, size_t inlen)
+        blake2s(out, 32, key, key_len, message, msg_len);
+
+        // print the hash-digest in hexadecimal form
+        printf("BLAKE2s-256 HASH for \"%s\": ", message);
+        // since 256-bits in bytes is 32 bytes- but in little endian form
+        for (int i = 0; i < 32; ++i)
+        {
+            // to get two characters even if the first character is "0" like "06"
+            // normally if "0" is skipped in "06"
+            printf("%02x", out[i]);
+        }
     }
-    return 0;
+
+    // for file input
+    // if command line argument is provided then print the hash of the file provided
+    else
+    {
+        FILE *fp;
+        int i, j, bytesread;
+        uint8_t in[toRead];
+        blake2s_ctx ctx;
+
+        // until all the files are read and processed
+        for (i = 1; i < argc; ++i)
+        {
+            // open the file in read mode
+            fp = fopen(*(argv + i), "r");
+
+            // if file not found or unable to read
+            if (fp == NULL)
+            {
+                printf("Error: unable to open %s\n", *(argv + i));
+                return 1;
+            }
+
+            // initialize the context "ctx" with key (optional)
+            blake2s_init(&ctx, 32, key, key_len);
+
+            while (1)
+            {
+                // read 64 bytes at a time i.e. 512 bits at a time and update the chained states accordingly
+                bytesread = fread(in, 1, toRead, fp);
+
+                // if there is some data read run the update function otherwise break
+                if (bytesread)
+                    blake2s_update(&ctx, in, bytesread);
+                else
+                    break;
+            }
+
+            // call the final function to generate the hash digest
+            blake2s_final(&ctx, out);
+
+            // print the hash digest in hexadecimal
+            printf("BLAKE2s-256 HASH for \"%s\" is: ", *(argv + i));
+            for (j = 0; j < 32; ++j)
+            {
+                printf("%02x", out[j]);
+            }
+
+            // close the file pointer
+            fclose(fp);
+        }
+        return 0;
+    }
 }
