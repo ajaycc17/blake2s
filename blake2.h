@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-// state context
+// state context for BLAKE2s-256
 typedef struct
 {
     uint8_t b[64]; // input buffer
