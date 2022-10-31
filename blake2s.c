@@ -261,7 +261,7 @@ int main(int argc, char **argv)
     if (argc < 2)
     {
         // take the message(in) and the key(key)
-        char *message = "abc";
+        char *message = "";
 
         // calculate the length of message and the key
         size_t msg_len = strlen(message);
