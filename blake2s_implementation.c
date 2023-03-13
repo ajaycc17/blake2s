@@ -1,5 +1,5 @@
 // include the blake2s.h file
-#include "blake2.h"
+#include "blake2_header.h"
 #include <string.h>
 
 #define toRead 64
@@ -261,7 +261,7 @@ int main(int argc, char **argv)
     if (argc < 2)
     {
         // take the message(in) and the key(key)
-        char *message = "";
+        char *message = "ajay";
 
         // calculate the length of message and the key
         size_t msg_len = strlen(message);
