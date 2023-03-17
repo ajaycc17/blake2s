@@ -1,4 +1,3 @@
-
 # BLAKE2s Hash function: BS and MS Project- IISERB(2022-23)
 
 Under the MS project, the working principles, methods and optimsations over BLAKE was studied and used to implement the BLAKE2s hash function. It can produce hash for a given string or any binary file using CLI. Also, properties of BLAKE2s were analysed and preimage attacks were mounted on the round-reduced(i.e. 1.5 and 2 rounds) versions. This repository contains both the works combined and uses C/C++ programming language for implementation of the functions and attacks.
